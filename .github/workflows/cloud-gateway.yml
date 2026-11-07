@@ -1,0 +1,36 @@
+name: Cloud gateway
+
+on:
+  push:
+    branches: [master, cloud-engine-foundation]
+    paths:
+      - "cloud/**"
+      - ".github/workflows/cloud-gateway.yml"
+  pull_request:
+    paths:
+      - "cloud/**"
+      - ".github/workflows/cloud-gateway.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: cloud/gateway/requirements.txt
+      - name: Install gateway and test dependencies
+        run: |
+          python -m pip install -r cloud/gateway/requirements.txt pytest
+      - name: Run gateway tests
+        working-directory: cloud
+        run: pytest -q tests
+      - name: Build gateway container
+        run: docker build -t osint-ninfer-gateway:test cloud/gateway
