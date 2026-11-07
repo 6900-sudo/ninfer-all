@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import time
+from collections import deque
+from threading import Lock
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -17,6 +20,10 @@ GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY", "")
 MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", "2097152"))
 MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "4096"))
 UPSTREAM_TIMEOUT_SECONDS = float(os.getenv("UPSTREAM_TIMEOUT_SECONDS", "600"))
+MAX_REQUESTS_PER_MINUTE = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "30"))
+
+_request_times: deque[float] = deque()
+_rate_lock = Lock()
 
 FORWARDED_RESPONSE_HEADERS = {
     "content-type",
@@ -54,6 +61,18 @@ def authenticate(authorization: str | None) -> None:
         supplied, GATEWAY_API_KEY
     ):
         raise HTTPException(status_code=401, detail="invalid_api_key")
+    now = time.monotonic()
+    with _rate_lock:
+        while _request_times and now - _request_times[0] >= 60:
+            _request_times.popleft()
+        if len(_request_times) >= MAX_REQUESTS_PER_MINUTE:
+            retry_after = max(1, int(60 - (now - _request_times[0])))
+            raise HTTPException(
+                status_code=429,
+                detail="rate_limit_exceeded",
+                headers={"Retry-After": str(retry_after)},
+            )
+        _request_times.append(now)
 
 
 def upstream_headers() -> dict[str, str]:
