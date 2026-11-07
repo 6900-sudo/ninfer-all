@@ -109,3 +109,19 @@ def test_rate_limit_returns_retry_after(monkeypatch):
         response = client.get("/v1/models", headers=headers)
         assert response.status_code == 429
         assert response.headers["retry-after"]
+
+
+def test_chat_rejects_oversized_body_before_upstream(monkeypatch):
+    monkeypatch.setattr(gateway, "MAX_REQUEST_BYTES", 32)
+
+    def handler(request):
+        raise AssertionError("upstream must not be called")
+
+    with setup_client(monkeypatch, handler) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer client-test-key"},
+            content=b'{"messages":[],"padding":"' + (b"x" * 64) + b'"}',
+        )
+        assert response.status_code == 413
+        assert response.json()["detail"] == "request_too_large"
