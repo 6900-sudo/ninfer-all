@@ -42,3 +42,14 @@ Send `Authorization: Bearer GATEWAY_API_KEY`. The gateway replaces that credenti
 ## Verification
 
 The gateway tests cover authentication, request limits, upstream routing and readiness. CI builds the gateway container and runs the tests. A successful gateway CI run does not prove the CUDA engine works on a real GPU; that requires a GPU-host smoke test with a licensed model artifact.
+
+## First GPU-host candidate (not yet provisioned)
+
+For a first real-GPU smoke test, the leading candidate is a single **RunPod L40S (48 GB VRAM)**. NInfer's own GPU table lists the L40S with a built-in device profile and a measured Flash-Next run. The extra VRAM gives more room for model weights, KV cache and concurrent requests than a 24 GB card. This is a candidate, not a guarantee that every model recipe will fit: validate the exact model, context and concurrency on the instance.
+
+RunPod's published Pods price page displayed **US$1.09 per hour** for an L40S when checked on 7 November 2026. At that rate, 10 test hours are about **US$10.90**; 40 hours are **US$43.60**; continuous 730-hour operation is about **US$795.70**, before storage, bandwidth, taxes or other charges. RunPod lists volume storage separately (running and idle rates differ). Confirm the actual region, instance class and checkout price before launching.
+
+- NInfer supported-card evidence: [docs/gpus.md](../docs/gpus.md)
+- RunPod's live pricing: https://www.runpod.io/pricing?sub1=model-compare
+
+The first deployment should be a short, manually stopped test window, not an always-on server. Before any real investigation data is sent, check the provider's region, data-processing terms, retention/deletion arrangements and applicable UK data-protection obligations. A provider's “secure” tier is not, by itself, proof of legal compliance.
