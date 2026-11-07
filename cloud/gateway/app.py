@@ -75,6 +75,23 @@ def authenticate(authorization: str | None) -> None:
         _request_times.append(now)
 
 
+async def read_limited_body(request: Request) -> bytes:
+    declared_length = request.headers.get("content-length")
+    if declared_length:
+        try:
+            if int(declared_length) > MAX_REQUEST_BYTES:
+                raise HTTPException(status_code=413, detail="request_too_large")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid_content_length") from None
+
+    chunks = bytearray()
+    async for chunk in request.stream():
+        if len(chunks) + len(chunk) > MAX_REQUEST_BYTES:
+            raise HTTPException(status_code=413, detail="request_too_large")
+        chunks.extend(chunk)
+    return bytes(chunks)
+
+
 def upstream_headers() -> dict[str, str]:
     headers = {"content-type": "application/json"}
     if NINFER_API_KEY:
@@ -151,9 +168,7 @@ async def chat_completions(
     request: Request, authorization: str | None = Header(default=None)
 ) -> Response:
     authenticate(authorization)
-    body = await request.body()
-    if len(body) > MAX_REQUEST_BYTES:
-        raise HTTPException(status_code=413, detail="request_too_large")
+    body = await read_limited_body(request)
     try:
         payload = json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError):
