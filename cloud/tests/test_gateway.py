@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 
 import httpx
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "gateway"))
 import app as gateway
 
 
+@contextmanager
 def setup_client(monkeypatch, handler):
     monkeypatch.setattr(gateway, "GATEWAY_API_KEY", "client-test-key")
     monkeypatch.setattr(gateway, "NINFER_API_KEY", "engine-test-key")
@@ -18,7 +20,6 @@ def setup_client(monkeypatch, handler):
             transport=httpx.MockTransport(handler)
         )
         yield client
-        client.app.state.http.close()
 
 
 def test_health_is_public_and_does_not_expose_keys(monkeypatch):
