@@ -13,6 +13,7 @@ import app as gateway
 
 @contextmanager
 def setup_client(monkeypatch, handler):
+    gateway._request_times.clear()
     monkeypatch.setattr(gateway, "GATEWAY_API_KEY", "client-test-key")
     monkeypatch.setattr(gateway, "NINFER_API_KEY", "engine-test-key")
     with TestClient(gateway.app) as client:
@@ -94,3 +95,17 @@ def test_ready_checks_engine(monkeypatch):
 
     with setup_client(monkeypatch, handler) as client:
         assert client.get("/ready").json() == {"status": "ready"}
+
+
+def test_rate_limit_returns_retry_after(monkeypatch):
+    monkeypatch.setattr(gateway, "MAX_REQUESTS_PER_MINUTE", 1)
+
+    def handler(request):
+        return httpx.Response(200, json={"data": []})
+
+    with setup_client(monkeypatch, handler) as client:
+        headers = {"Authorization": "Bearer client-test-key"}
+        assert client.get("/v1/models", headers=headers).status_code == 200
+        response = client.get("/v1/models", headers=headers)
+        assert response.status_code == 429
+        assert response.headers["retry-after"]
