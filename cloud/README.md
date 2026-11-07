@@ -6,7 +6,7 @@ This directory defines the first cloud-service layer around NInfer. NInfer remai
 
 Phone / OSINT Deep Search → HTTPS (Caddy) → authenticated gateway → private Docker network → NInfer GPU server.
 
-Only Caddy publishes internet-facing ports (80/443). The gateway and NInfer have no public host ports. The gateway accepts a separate client bearer key, then uses the private NInfer key upstream. It exposes only model listing and chat completions, caps request size and output tokens, supports streamed responses, and does not log prompts or completions. CORS and interactive API documentation are disabled.
+Only Caddy publishes internet-facing ports (80/443). The gateway and NInfer have no public host ports. NInfer sits on an isolated internal network; a separate one-shot downloader has outbound access, downloads the pinned model artifact and verifies its SHA-256 before NInfer is allowed to start. The gateway accepts a separate client bearer key, then uses the private NInfer key upstream. It exposes only model listing and chat completions, caps request size and output tokens, supports streamed responses, and does not log prompts or completions. CORS and interactive API documentation are disabled.
 
 ## Current status and limitations
 
@@ -14,7 +14,7 @@ Only Caddy publishes internet-facing ports (80/443). The gateway and NInfer have
 - This fork currently has no Actions run history and no published release. Its own GHCR image has not yet been built and verified.
 - The sample image in `.env.example` is the upstream image as a temporary bootstrap reference. Do not treat it as a fork-built release. Replace it with a tested `ghcr.io/6900-sudo/ninfer-all` tag once the fork's image pipeline has succeeded.
 - NInfer needs a supported NVIDIA GPU and a compatible NVIDIA driver / Container Toolkit on the host. CPU-only hosting and Intel UHD are not supported.
-- The example model ID is a starting default, not a final model selection. Confirm artifact availability, model licence, GPU VRAM and context settings before provisioning.
+- The initial model is Qwen3.8-27B: its published NInfer artifact is about 19 GiB and declares Apache-2.0. The downloader pins a specific revision and checks its SHA-256 before use. Confirm model suitability, GPU VRAM and context settings before provisioning.
 - The gateway currently uses one shared client key. Before multi-user access, add per-user identity, revocation, quotas, durable audit metadata and tenant isolation.
 - This stack does not yet provide OSINT job queues, evidence storage, scheduled monitoring, or the OSINT front end. Those belong in the OSINT application layer, not the inference engine.
 - GPU hosting is paid. No provider, instance, domain or billing account is provisioned by this repository.
@@ -28,7 +28,7 @@ Only Caddy publishes internet-facing ports (80/443). The gateway and NInfer have
 5. Permit inbound TCP 80/443 only. Do not publish ports 8080 or 8000. Keep SSH restricted to the administrator's own access path.
 6. Start with a low context and concurrency setting. Increase only after measuring peak VRAM and host RAM with the actual model.
 
-The deployment command and model-download procedure will be added after a fork-built image and a chosen GPU host have passed verification. Do not run a public deployment using the example secrets.
+The deployment procedure will be finalised after the fork-built image and a chosen GPU host have passed verification. Do not run a public deployment using the example secrets.
 
 ## API
 
