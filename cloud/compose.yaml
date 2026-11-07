@@ -14,19 +14,16 @@ services:
     command:
       - run
       - ${NINFER_MODEL_ID:-qwen38-27b}
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8080"
       - --api-key
       - ${NINFER_API_KEY:?Set NINFER_API_KEY in .env}
-      - --max-context
-      - ${NINFER_MAX_CONTEXT:-32768}
-      - --max-concurrency
-      - "2"
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      NINFER_HOST: 0.0.0.0
+      NINFER_PORT: "8080"
+      NINFER_CONTEXT: ${NINFER_MAX_CONTEXT:-32768}
+      NINFER_KV_CAPACITY: ${NINFER_MAX_CONTEXT:-32768}
+      NINFER_CONCURRENCY: "1"
     volumes:
       - model-data:/models
       - ninfer-cache:/cache
