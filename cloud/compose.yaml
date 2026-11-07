@@ -19,6 +19,7 @@ services:
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      NINFER_API_KEY: ${NINFER_API_KEY:?Set NINFER_API_KEY in .env}
       NINFER_HOST: 0.0.0.0
       NINFER_PORT: "8080"
       NINFER_CONTEXT: ${NINFER_MAX_CONTEXT:-32768}
