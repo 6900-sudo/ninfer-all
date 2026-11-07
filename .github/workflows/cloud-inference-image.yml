@@ -1,0 +1,55 @@
+name: Cloud inference image
+
+on:
+  push:
+    branches: [cloud-engine-foundation]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "apps/**"
+      - "runtime/**"
+      - "docker/**"
+      - "scripts/**"
+      - "third_party/**"
+      - "CMakeLists.txt"
+      - "Dockerfile"
+      - ".github/workflows/cloud-inference-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish the fork's CUDA 13.4 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            CUDA_VERSION=13.4.3
+            UBUNTU_VERSION=26.04
+            ARCHS=86
+            JOBS=2
+          tags: ghcr.io/${{ github.repository }}:cloud-cuda13.4-sm86-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=NInfer cloud inference image built from the 6900-sudo fork (CUDA 13.4, sm_86; also runs on supported Ada GPUs)
+            org.opencontainers.image.licenses=Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
