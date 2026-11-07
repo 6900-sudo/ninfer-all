@@ -5,6 +5,9 @@ on:
     branches: [master, cloud-engine-foundation]
     paths:
       - "cloud/**"
+      - "scripts/run.sh"
+      - "docker/entrypoint.sh"
+      - ".dockerignore"
       - ".github/workflows/cloud-gateway.yml"
   pull_request:
     paths:
@@ -32,5 +35,9 @@ jobs:
       - name: Run gateway tests
         working-directory: cloud
         run: pytest -q tests
+      - name: Check launcher shell syntax
+        run: bash -n scripts/run.sh scripts/download-model.sh docker/entrypoint.sh
+      - name: Validate cloud Compose configuration
+        run: docker compose --env-file cloud/.env.example -f cloud/compose.yaml config --quiet
       - name: Build gateway container
         run: docker build -t osint-ninfer-gateway:test cloud/gateway
