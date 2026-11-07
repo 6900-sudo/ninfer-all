@@ -1,0 +1,84 @@
+services:
+  ninfer:
+    image: ${NINFER_IMAGE:?Set NINFER_IMAGE in .env}
+    command:
+      - run
+      - ${NINFER_MODEL_ID:-qwen38-27b}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --api-key
+      - ${NINFER_API_KEY:?Set NINFER_API_KEY in .env}
+      - --max-context
+      - ${NINFER_MAX_CONTEXT:-32768}
+      - --max-concurrency
+      - "2"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - model-data:/models
+      - ninfer-cache:/cache
+    expose:
+      - "8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10m
+    networks: [private]
+
+  gateway:
+    build:
+      context: ./gateway
+    environment:
+      NINFER_BASE_URL: http://ninfer:8080
+      NINFER_API_KEY: ${NINFER_API_KEY:?Set NINFER_API_KEY in .env}
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:?Set GATEWAY_API_KEY in .env}
+      MAX_REQUEST_BYTES: ${MAX_REQUEST_BYTES:-2097152}
+      MAX_OUTPUT_TOKENS: ${MAX_OUTPUT_TOKENS:-4096}
+      UPSTREAM_TIMEOUT_SECONDS: ${UPSTREAM_TIMEOUT_SECONDS:-600}
+    expose:
+      - "8000"
+    depends_on:
+      ninfer:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [private, edge]
+
+  caddy:
+    image: caddy:2
+    environment:
+      AI_DOMAIN: ${AI_DOMAIN:?Set AI_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [gateway]
+    restart: unless-stopped
+    networks: [edge]
+
+volumes:
+  model-data:
+  ninfer-cache:
+  caddy-data:
+  caddy-config:
+
+networks:
+  private:
+    internal: true
+  edge:
