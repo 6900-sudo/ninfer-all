@@ -6,7 +6,7 @@ This directory defines the first cloud-service layer around NInfer. NInfer remai
 
 Phone / OSINT Deep Search → HTTPS (Caddy) → authenticated gateway → private Docker network → NInfer GPU server.
 
-Only Caddy publishes internet-facing ports (80/443). The gateway and NInfer have no public host ports. NInfer sits on an isolated internal network; a separate one-shot downloader has outbound access, downloads the pinned model artifact and verifies its SHA-256 before NInfer is allowed to start. The gateway accepts a separate client bearer key, then uses the private NInfer key upstream. It exposes only model listing and chat completions, caps request size and output tokens, applies a per-key request rate limit, supports streamed responses, and does not log prompts or completions. CORS and interactive API documentation are disabled.
+Only Caddy publishes internet-facing ports (80/443). The gateway and NInfer have no public host ports. NInfer sits on an isolated internal network; a separate one-shot downloader has outbound access, downloads the pinned model artifact and verifies its SHA-256 before NInfer is allowed to start. The gateway accepts a separate client bearer key, then uses the private NInfer key upstream. The NInfer launcher passes that engine key to the server's own `--api-key` option, so the private inference endpoint is authenticated too. It exposes only model listing and chat completions, caps request size and output tokens, applies a per-key request rate limit, supports streamed responses, and does not log prompts or completions. CORS and interactive API documentation are disabled.
 
 ## Current status and limitations
 
@@ -23,7 +23,7 @@ Only Caddy publishes internet-facing ports (80/443). The gateway and NInfer have
 
 1. On the eventual GPU host, create a private `.env` from `.env.example`.
 2. Set a real domain in `AI_DOMAIN` and point its DNS A/AAAA records to the host.
-3. Generate two different strong random secrets for `GATEWAY_API_KEY` and `NINFER_API_KEY`. Keep the file private.
+3. Generate two different strong random secrets for `GATEWAY_API_KEY` and `NINFER_API_KEY`. Keep the file private; Docker administrators can inspect container configuration, so restrict host access.
 4. Select a GPU supported by the chosen NInfer build and set the image tag and model ID only after checking compatibility and licence.
 5. Permit inbound TCP 80/443 only. Do not publish ports 8080 or 8000. Keep SSH restricted to the administrator's own access path.
 6. Start with a low context and concurrency setting. Increase only after measuring peak VRAM and host RAM with the actual model.
