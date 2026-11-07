@@ -1,4 +1,14 @@
 services:
+  model-download:
+    image: ${NINFER_IMAGE:?Set NINFER_IMAGE in .env}
+    command: ["download", "${NINFER_MODEL_ID:-qwen38-27b}"]
+    environment:
+      NINFER_MODEL_DIR: /models
+    volumes:
+      - model-data:/models
+    networks: [edge]
+    restart: "no"
+
   ninfer:
     image: ${NINFER_IMAGE:?Set NINFER_IMAGE in .env}
     command:
@@ -29,6 +39,9 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    depends_on:
+      model-download:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
@@ -80,4 +93,5 @@ volumes:
 
 networks:
   private:
+    internal: true
   edge:
