@@ -34,3 +34,8 @@ models
 grafts
 dist
 build-cache-test.*
+
+# Never send local deployment secrets into a Docker build context.
+.env
+.env.*
+!.env.example
