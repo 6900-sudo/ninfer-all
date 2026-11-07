@@ -256,6 +256,12 @@ if [[ -n "${NINFER_CHAT_TEMPLATE:-}" ]]; then
   profile_args+=(--chat-template "$NINFER_CHAT_TEMPLATE")
 fi
 
+# The cloud gateway uses a separate client key; protect the inference endpoint as well.
+# The key is passed only to the local server process and is never printed by this launcher.
+if [[ -n "${NINFER_API_KEY:-}" ]]; then
+  profile_args+=(--api-key "$NINFER_API_KEY")
+fi
+
 # Same two layouts as models/: the checkout's grafts/ first, then the one beside the launcher.
 graft_dir="${NINFER_GRAFT_DIR:-$root/grafts/$model_key}"
 [[ -n "${NINFER_GRAFT_DIR:-}" || -d "$graft_dir" ]] || graft_dir="$script_dir/grafts/$model_key"
