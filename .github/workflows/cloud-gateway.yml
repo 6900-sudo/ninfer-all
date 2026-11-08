@@ -31,7 +31,7 @@ jobs:
           cache-dependency-path: cloud/gateway/requirements.txt
       - name: Install gateway and test dependencies
         run: |
-          python -m pip install -r cloud/gateway/requirements.txt pytest
+          python -m pip install -r cloud/gateway/requirements.txt pytest PyYAML==6.0.3
       - name: Run gateway tests
         working-directory: cloud
         run: pytest -q tests
