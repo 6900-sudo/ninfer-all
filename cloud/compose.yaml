@@ -72,8 +72,9 @@ services:
     image: caddy:2
     environment:
       AI_DOMAIN: ${AI_DOMAIN:?Set AI_DOMAIN in .env}
+    # TLS only: Caddy obtains certificates with ACME TLS-ALPN-01 on TCP 443.
+    # UDP 443 is optional HTTP/3; no public HTTP port is published.
     ports:
-      - "80:80"
       - "443:443"
       - "443:443/udp"
     volumes:
