@@ -10,6 +10,8 @@ Only Caddy publishes internet-facing ports: TCP 443 for HTTPS and UDP 443 for op
 
 The gateway accepts a separate client bearer key, then uses the private NInfer key upstream. The NInfer launcher passes that engine key to the server's own `--api-key` option. The engine's request handler checks the bearer key or `x-api-key` header on API routes; `/health` is intentionally exempt for container health checks. The gateway exposes only model listing and chat completions, caps request size and output tokens, applies a single-process request rate limit (30 requests/minute by default), supports streamed responses, and does not log prompts or completions. CORS and interactive API documentation are disabled.
 
+The gateway answers `503 gateway_not_configured` to every API request while `GATEWAY_API_KEY` is unset, shorter than 32 characters or equal to `NINFER_API_KEY`, or while either key still starts with `replace-with` as in `.env.example`; it logs the reason at startup, never the key. A wrong key gets `401` and is not locked out: with one shared key, a lockout would let anyone who floods the gateway shut its owner out, so the 32-character minimum is what makes guessing impractical. Limiting floods by client address belongs at the edge and is not configured in this stack. `GET /ready` needs no key; one engine health check answers every caller for five seconds.
+
 ## Current status
 
 - The cloud gateway tests, shell syntax checks, Compose validation and gateway container build passed in [gateway CI run 42360678666](https://github.com/6900-sudo/ninfer-all/actions/runs/42360678666).
@@ -19,7 +21,7 @@ The gateway accepts a separate client bearer key, then uses the private NInfer k
 - The image has not been smoke-tested on a real GPU. A successful container build does not prove runtime compatibility, model loading, throughput or VRAM fit.
 - NInfer needs a supported NVIDIA GPU and a compatible NVIDIA driver / Container Toolkit on the host. CPU-only hosting and Intel UHD are not supported.
 - The initial model is Qwen3.8-27B. The downloader pins revision `1cbd84e7221e51186bd7f093a149912d2489625b`, checks the expected file size and SHA-256, and only then promotes the download to its final filename. The Compose service does not set the optional checksum-bypass variable.
-- The gateway currently uses one shared client key and a single-process global rate limiter. Before multi-user or multi-replica access, add per-user identity, revocation, distributed quotas, durable audit metadata and tenant isolation.
+- The gateway currently uses one shared client key and a single-process global rate limiter, with no per-address limit on wrong keys or floods. Before multi-user or multi-replica access, add per-user identity, revocation, distributed quotas, durable audit metadata and tenant isolation.
 - This stack does not yet provide OSINT job queues, evidence storage, scheduled monitoring, or the OSINT front end. Those belong in the OSINT application layer, not the inference engine.
 - GPU hosting, storage, a domain and any long-running cloud resources are not provisioned. No cloud resources have been created by this repository work.
 
@@ -27,7 +29,7 @@ The gateway accepts a separate client bearer key, then uses the private NInfer k
 
 1. On the eventual GPU host, create a private `.env` from `.env.example`.
 2. Set a real domain in `AI_DOMAIN` and point its DNS A/AAAA records to the host.
-3. Generate two different strong random secrets for `GATEWAY_API_KEY` and `NINFER_API_KEY`. Keep the file private; Docker administrators can inspect container configuration, so restrict host access.
+3. Generate two different strong random secrets for `GATEWAY_API_KEY` and `NINFER_API_KEY`, for example with `openssl rand -hex 32` run twice; the gateway refuses a client key under 32 characters. Keep the file private; Docker administrators can inspect container configuration, so restrict host access.
 4. Confirm that the GHCR package can be pulled by the host. If it is private, arrange a narrowly scoped read credential yourself; do not put credentials in the repository.
 5. Select a GPU supported by this NInfer build and confirm the exact model, licence, VRAM and context settings before provisioning.
 6. Permit inbound TCP 443 only (plus UDP 443 if HTTP/3 is wanted). Do not publish ports 80, 8080 or 8000. Keep SSH restricted to the administrator's own access path.

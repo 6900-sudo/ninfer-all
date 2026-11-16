@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import secrets
 import time
@@ -22,6 +24,16 @@ MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "4096"))
 UPSTREAM_TIMEOUT_SECONDS = float(os.getenv("UPSTREAM_TIMEOUT_SECONDS", "600"))
 MAX_REQUESTS_PER_MINUTE = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "30"))
 
+# A client key this long cannot be found by guessing, so wrong keys need no lockout: a lockout
+# on the one shared key would let anyone who floods the gateway shut its owner out.
+MIN_GATEWAY_KEY_LENGTH = 32
+EXAMPLE_KEY_PREFIX = "replace-with"
+# /ready needs no key, so one engine check answers every caller for this long.
+READY_CACHE_SECONDS = 5.0
+READY_TIMEOUT_SECONDS = 5.0
+
+logger = logging.getLogger("uvicorn.error")
+
 _request_times: deque[float] = deque()
 _rate_lock = Lock()
 
@@ -39,6 +51,11 @@ async def lifespan(application: FastAPI):
         timeout=httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS, connect=10.0),
         limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
     )
+    application.state.ready_lock = asyncio.Lock()
+    application.state.ready_checked = None
+    problem = key_problem()
+    if problem:
+        logger.error("Gateway keys rejected, every API request gets 503: %s", problem)
     yield
     await application.state.http.aclose()
 
@@ -53,12 +70,29 @@ app = FastAPI(
 )
 
 
-def authenticate(authorization: str | None) -> None:
+def key_problem() -> str | None:
+    """Why the configured keys must not be used, or None when they are acceptable."""
     if not GATEWAY_API_KEY:
+        return "GATEWAY_API_KEY is not set"
+    if GATEWAY_API_KEY.startswith(EXAMPLE_KEY_PREFIX) or NINFER_API_KEY.startswith(
+        EXAMPLE_KEY_PREFIX
+    ):
+        return "an example key from .env.example is still in use"
+    if len(GATEWAY_API_KEY) < MIN_GATEWAY_KEY_LENGTH:
+        return f"GATEWAY_API_KEY is shorter than {MIN_GATEWAY_KEY_LENGTH} characters"
+    if GATEWAY_API_KEY == NINFER_API_KEY:
+        return "GATEWAY_API_KEY and NINFER_API_KEY are the same"
+    return None
+
+
+def authenticate(authorization: str | None) -> None:
+    if key_problem():
         raise HTTPException(status_code=503, detail="gateway_not_configured")
     scheme, _, supplied = (authorization or "").partition(" ")
+    # Bytes, not text: compare_digest raises on text with non-ASCII characters, and a header
+    # may carry any byte.
     if scheme.lower() != "bearer" or not secrets.compare_digest(
-        supplied, GATEWAY_API_KEY
+        supplied.encode("utf-8"), GATEWAY_API_KEY.encode("utf-8")
     ):
         raise HTTPException(status_code=401, detail="invalid_api_key")
     now = time.monotonic()
@@ -133,8 +167,14 @@ async def send_upstream(
             stream_body(), status_code=upstream.status_code, headers=headers
         )
 
-    content = await upstream.aread()
-    await upstream.aclose()
+    try:
+        content = await upstream.aread()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="inference_timeout") from None
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="inference_unavailable") from None
+    finally:
+        await upstream.aclose()
     return Response(content, status_code=upstream.status_code, headers=headers)
 
 
@@ -145,12 +185,19 @@ async def health() -> dict[str, str]:
 
 @app.get("/ready")
 async def ready(request: Request) -> JSONResponse:
-    client: httpx.AsyncClient = request.app.state.http
-    try:
-        result = await client.get(f"{NINFER_BASE_URL}/health")
-    except httpx.HTTPError:
-        return JSONResponse({"status": "not_ready"}, status_code=503)
-    if result.status_code != 200:
+    state = request.app.state
+    async with state.ready_lock:
+        checked = state.ready_checked
+        if checked is None or time.monotonic() - checked[0] >= READY_CACHE_SECONDS:
+            try:
+                result = await state.http.get(
+                    f"{NINFER_BASE_URL}/health", timeout=READY_TIMEOUT_SECONDS
+                )
+                engine_ready = result.status_code == 200
+            except httpx.HTTPError:
+                engine_ready = False
+            checked = state.ready_checked = (time.monotonic(), engine_ready)
+    if not checked[1]:
         return JSONResponse({"status": "not_ready"}, status_code=503)
     return JSONResponse({"status": "ready"})
 
@@ -171,7 +218,8 @@ async def chat_completions(
     body = await read_limited_body(request)
     try:
         payload = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
+        # RecursionError: nesting too deep for the parser, which a 2 MB body can reach.
         raise HTTPException(status_code=400, detail="invalid_json") from None
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="invalid_request")
