@@ -11,11 +11,11 @@ services:
 
   ninfer:
     image: ${NINFER_IMAGE:?Set NINFER_IMAGE in .env}
+    # `run` takes a model and an optional profile, nothing else: the launcher reads
+    # NINFER_API_KEY below and passes it to the server as --api-key.
     command:
       - run
       - ${NINFER_MODEL_ID:-qwen38-27b}
-      - --api-key
-      - ${NINFER_API_KEY:?Set NINFER_API_KEY in .env}
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
