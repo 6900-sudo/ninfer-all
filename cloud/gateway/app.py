@@ -14,6 +14,7 @@ from typing import AsyncIterator
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from starlette.requests import ClientDisconnect
 
 
 NINFER_BASE_URL = os.getenv("NINFER_BASE_URL", "http://ninfer:8080").rstrip("/")
@@ -119,10 +120,14 @@ async def read_limited_body(request: Request) -> bytes:
             raise HTTPException(status_code=400, detail="invalid_content_length") from None
 
     chunks = bytearray()
-    async for chunk in request.stream():
-        if len(chunks) + len(chunk) > MAX_REQUEST_BYTES:
-            raise HTTPException(status_code=413, detail="request_too_large")
-        chunks.extend(chunk)
+    try:
+        async for chunk in request.stream():
+            if len(chunks) + len(chunk) > MAX_REQUEST_BYTES:
+                raise HTTPException(status_code=413, detail="request_too_large")
+            chunks.extend(chunk)
+    except ClientDisconnect:
+        # The caller hung up during the upload; end the request instead of logging a crash.
+        raise HTTPException(status_code=400, detail="client_disconnected") from None
     return bytes(chunks)
 
 

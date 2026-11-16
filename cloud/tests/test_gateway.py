@@ -1,9 +1,12 @@
+import asyncio
 import json
 from contextlib import contextmanager
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.requests import ClientDisconnect
 
 import sys
 from pathlib import Path
@@ -261,3 +264,16 @@ def test_ready_reports_an_engine_that_is_down(monkeypatch):
         assert response.status_code == 503
         assert response.json() == {"status": "not_ready"}
 
+
+def test_upload_abandoned_by_the_caller_ends_the_request_cleanly():
+    class AbandonedUpload:
+        headers = {}
+
+        async def stream(self):
+            yield b"{"
+            raise ClientDisconnect()
+
+    with pytest.raises(HTTPException) as refusal:
+        asyncio.run(gateway.read_limited_body(AbandonedUpload()))
+    assert refusal.value.status_code == 400
+    assert refusal.value.detail == "client_disconnected"
